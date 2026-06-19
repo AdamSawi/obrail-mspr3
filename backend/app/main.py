@@ -529,7 +529,7 @@ def _load_trips_df() -> pd.DataFrame:
     if not TRIPS_CSV_PATH.exists():
         raise FileNotFoundError(f"Dataset introuvable : {TRIPS_CSV_PATH}")
 
-    columns = [
+    required_columns = [
         "arrival_minutes",
         "departure_minutes",
         "destination_stop_name",
@@ -542,9 +542,16 @@ def _load_trips_df() -> pd.DataFrame:
         "country",
         "distance_km",
         "type_train",
-        "kgCO2_emis",
     ]
-    return pd.read_csv(TRIPS_CSV_PATH, usecols=columns, low_memory=False)
+    header = pd.read_csv(TRIPS_CSV_PATH, nrows=0).columns
+    co2_column = "kgCO2_emis" if "kgCO2_emis" in header else "co2_estime"
+    if co2_column not in header:
+        raise ValueError("Dataset invalide : colonne CO2 attendue absente (kgCO2_emis ou co2_estime)")
+
+    trips = pd.read_csv(TRIPS_CSV_PATH, usecols=[*required_columns, co2_column], low_memory=False)
+    if co2_column != "kgCO2_emis":
+        trips = trips.rename(columns={co2_column: "kgCO2_emis"})
+    return trips
 
 
 def _contains_case_insensitive(series: pd.Series, value: Optional[str]) -> pd.Series:
