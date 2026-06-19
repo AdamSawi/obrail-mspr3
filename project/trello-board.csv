@@ -1,0 +1,25 @@
+List,Card,Description,Labels
+Backlog,Valider le périmètre MSPR 3 avec l'équipe,"Aligner l'équipe sur les attendus : application complète, Docker, CI/CD, tests, monitoring, documentation.",Cadrage
+Backlog,Rédiger l'architecture cible,"Décrire backend, frontend, base, ETL/import, monitoring, CI/CD et flux de données.",Architecture
+Backlog,Identifier les composants hérités MSPR 1 et MSPR 2,"Lister ETL, dataset, modèles, API prototype et rapports réutilisables.",Cadrage
+A faire,Stabiliser l'API FastAPI existante,"Réorganiser le code backend et conserver les routes IA déjà livrées.",Backend
+A faire,Ajouter GET /trajets,"Retourner une liste paginée et filtrable de trajets ferroviaires.",Backend
+A faire,Ajouter GET /trajets/{id},"Retourner le détail d'un trajet par identifiant stable.",Backend
+A faire,Ajouter GET /stats/volumes,"Exposer des volumes par pays, type de train, jour/nuit ou autre indicateur utile.",Backend
+A faire,Renforcer GET /health,"Inclure santé API, modèles, données et dépendances.",Backend
+A faire,Créer script d'import reproductible,"Importer le dataset harmonisé vers la base ou préparer un chargement déterministe.",ETL
+A faire,Documenter la provenance du dataset,"Expliquer le lien avec l'ETL MSPR 1 et le dataset eu_trips_v2.csv.",ETL
+A faire,Créer le socle frontend,"Mettre en place l'application web ObRail.",Frontend
+A faire,Construire la page tableau de bord,"Afficher indicateurs clés et état service.",Frontend
+A faire,Construire la liste des trajets,"Afficher les trajets avec recherche et filtres.",Frontend
+A faire,Dockerfile backend,"Créer une image backend reproductible.",Docker
+A faire,Dockerfile frontend,"Créer une image frontend reproductible.",Docker
+A faire,Docker Compose complet,"Orchestrer backend, frontend, base et monitoring.",Docker
+A faire,Tests unitaires backend,"Tester services, validation et routes principales.",Tests
+A faire,Tests intégration API/données,"Tester endpoints avec dataset ou base de test.",Tests
+A faire,Tests E2E frontend,"Tester parcours utilisateur clé avec Playwright.",Tests
+A faire,Workflow GitHub Actions,"Automatiser tests et build Docker.",CI/CD
+A faire,Ajouter Prometheus,"Collecter métriques API.",Monitoring
+A faire,Ajouter Grafana,"Créer dashboard disponibilité, latence, erreurs.",Monitoring
+A faire,Rapport technique,"Documenter architecture, choix, CI/CD, tests, monitoring, RGPD, sécurité, rollback.",Documentation
+
