@@ -63,11 +63,12 @@ Services lances par Docker Compose :
 | Service | Role | URL locale |
 | --- | --- | --- |
 | PostgreSQL | Base applicative persistante | `localhost:5432` |
+| Adminer | Visualisation de la base PostgreSQL | `http://localhost:8081` |
 | Backend FastAPI | API REST et endpoints IA | `http://localhost:8000` |
 | Swagger | Documentation interactive API | `http://localhost:8000/docs` |
 | Frontend | Interface utilisateur | `http://localhost:5173` |
 | Prometheus | Collecte des metriques | `http://localhost:9090` |
-| Grafana | Tableaux de bord | `http://localhost:3000` |
+| Grafana | Tableaux de bord | `http://localhost:3001` |
 | Loki | Centralisation des logs | `http://localhost:3100` |
 
 ## 4. Organisation du depot
@@ -107,6 +108,16 @@ Fichiers principaux :
 - `docker/docker-compose.yml` : lance PostgreSQL et le backend ;
 - `scripts/entrypoint.sh` : attend PostgreSQL, lance le seed puis demarre l'API ;
 - `scripts/preuve_postgresql.sh` : affiche la preuve de la base, de la table et des donnees.
+
+La base peut aussi etre visualisee dans Adminer sur `http://localhost:8081` avec :
+
+```text
+Systeme : PostgreSQL
+Serveur : db
+Utilisateur : obrail
+Mot de passe : obrail
+Base : obrail
+```
 
 Preuve observee localement :
 
@@ -243,6 +254,7 @@ Loki et Promtail sont ajoutes pour centraliser les logs Docker dans Grafana.
 Fichiers principaux :
 
 - `monitoring/prometheus/prometheus.yml` ;
+- `monitoring/loki/local-config.yaml` ;
 - `monitoring/grafana/dashboards/obrail-api.json` ;
 - `monitoring/grafana/provisioning/` ;
 - `monitoring/promtail.yml`.
@@ -294,7 +306,8 @@ Ouvrir les interfaces :
 - frontend : `http://localhost:5173` ;
 - Swagger : `http://localhost:8000/docs` ;
 - Prometheus : `http://localhost:9090` ;
-- Grafana : `http://localhost:3000`.
+- Grafana : `http://localhost:3001` ;
+- Adminer : `http://localhost:8081`.
 
 Identifiants Grafana locaux :
 

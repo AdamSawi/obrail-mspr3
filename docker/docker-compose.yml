@@ -16,6 +16,14 @@ services:
       retries: 5
       start_period: 10s
 
+  adminer:
+    image: adminer:4.8.1
+    ports:
+      - "8081:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
   backend:
     build:
       context: ..
@@ -90,7 +98,7 @@ services:
   grafana:
     image: grafana/grafana:11.3.0
     ports:
-      - "3000:3000"
+      - "3001:3000"
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
@@ -108,6 +116,15 @@ services:
     ports:
       - "3100:3100"
     command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ../monitoring/loki/local-config.yaml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:3100/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
 
   promtail:
     image: grafana/promtail:2.9.0
@@ -117,8 +134,10 @@ services:
       - ../monitoring/promtail.yml:/etc/promtail/promtail.yml:ro
     command: -config.file=/etc/promtail/promtail.yml
     depends_on:
-      - loki
+      loki:
+        condition: service_healthy
 
 volumes:
   grafana-data:
+  loki-data:
   postgres-data:
