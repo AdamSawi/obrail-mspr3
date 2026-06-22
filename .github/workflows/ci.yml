@@ -13,6 +13,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: obrail
+          POSTGRES_PASSWORD: obrail
+          POSTGRES_DB: obrail
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -38,6 +53,12 @@ jobs:
 
       - name: Compile backend package
         run: python -m compileall backend/app
+
+      - name: Seed database
+        env:
+          DATABASE_URL: postgresql://obrail:obrail@localhost:5432/obrail
+          CSV_PATH: data/eu_trips_v2.csv
+        run: python backend/seed.py
 
       - name: Run backend tests
         run: python -m pytest -q backend/tests

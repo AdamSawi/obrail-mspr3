@@ -64,6 +64,25 @@ La procedure detaillee, les variables d'environnement, les volumes et les verifi
 - `POST /predict/substitution`
 - `POST /predict/co2`
 
+## Base de données
+
+PostgreSQL 15 via Docker.
+
+### Lancement
+```bash
+docker compose -f docker/docker-compose.yml up -d db
+```
+
+### Import des données
+```bash
+cd backend
+cp .env.example .env
+pip install -r requirements.txt
+python seed.py
+```
+
+Les variables d'environnement nécessaires sont dans `backend/.env.example`.
+
 ## Traçabilité
 
 Tout changement doit être commité avec un message explicite. Le board projet se trouve dans `project/`.
