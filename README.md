@@ -83,6 +83,14 @@ python seed.py
 
 Les variables d'environnement nécessaires sont dans `backend/.env.example`.
 
+### Preuve PostgreSQL
+
+Une preuve reproductible est disponible dans `docs/preuve-postgresql.md`.
+
+```bash
+bash scripts/preuve_postgresql.sh
+```
+
 ## Traçabilité
 
 Tout changement doit être commité avec un message explicite. Le board projet se trouve dans `project/`.
