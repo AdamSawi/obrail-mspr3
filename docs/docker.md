@@ -14,6 +14,7 @@ docker compose -f docker/docker-compose.yml up --build
 
 | Service | URL locale | Role |
 | --- | --- | --- |
+| PostgreSQL | `localhost:5432` | Base applicative des trajets. |
 | Frontend | `http://localhost:5173` | Interface ObRail pour consulter health, indicateurs et trajets. |
 | Backend | `http://localhost:8000` | API FastAPI. |
 | Swagger | `http://localhost:8000/docs` | Documentation interactive de l'API. |
@@ -36,6 +37,11 @@ GRAFANA_ADMIN_USER=admin GRAFANA_ADMIN_PASSWORD='mot-de-passe-local' \
 
 | Variable | Service | Valeur par defaut Compose | Description |
 | --- | --- | --- | --- |
+| `POSTGRES_DB` | db | `obrail` | Base PostgreSQL creee au demarrage. |
+| `POSTGRES_USER` | db | `obrail` | Utilisateur applicatif local. |
+| `POSTGRES_PASSWORD` | db | `obrail` | Mot de passe local de demonstration. |
+| `DATABASE_URL` | backend | `postgresql://obrail:obrail@db:5432/obrail` | Connexion SQLAlchemy vers PostgreSQL. |
+| `DB_HOST` | backend | `db` | Hote attendu par le script d'attente PostgreSQL. |
 | `OBRAIL_DATASET_PATH` | backend | `/app/data/eu_trips_v2.csv` | Chemin du CSV harmonise dans le conteneur. |
 | `OBRAIL_CORS_ORIGINS` | backend | `http://localhost:5173,http://127.0.0.1:5173` | Origines autorisees a appeler l'API depuis un navigateur. |
 | `VITE_API_BASE_URL` | frontend | `http://localhost:8000` | URL publique appelee par le frontend dans le navigateur. |
@@ -46,11 +52,14 @@ GRAFANA_ADMIN_USER=admin GRAFANA_ADMIN_PASSWORD='mot-de-passe-local' \
 
 - `../data:/app/data:ro` expose `data/eu_trips_v2.csv` au backend sans le copier dans l'image.
 - `../models:/app/models:ro` expose les modeles IA au backend sans les copier dans l'image.
+- `postgres-data:/var/lib/postgresql/data` conserve la base PostgreSQL locale.
 - `grafana-data:/var/lib/grafana` conserve l'etat local Grafana.
 - `../monitoring/grafana/provisioning:/etc/grafana/provisioning:ro` provisionne la datasource Prometheus et le dashboard.
 - `../monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro` versionne le dashboard jury.
 
 Le fichier `.dockerignore` exclut `.venv`, `.git`, `node_modules`, `data` et `models` du contexte de build. Les donnees et modeles restent montes au runtime via les volumes ci-dessus.
+
+Au demarrage du backend, `scripts/entrypoint.sh` attend PostgreSQL avec `pg_isready`, lance `python seed.py`, puis demarre FastAPI. Le seed est idempotent : les trajets deja presents ne sont pas reinsérés.
 
 ## Verification apres demarrage
 
@@ -76,7 +85,7 @@ Arret simple :
 docker compose -f docker/docker-compose.yml down
 ```
 
-Arret avec suppression du volume Grafana local :
+Arret avec suppression des volumes locaux PostgreSQL et Grafana :
 
 ```bash
 docker compose -f docker/docker-compose.yml down -v
@@ -84,6 +93,4 @@ docker compose -f docker/docker-compose.yml down -v
 
 ## Decision de persistance
 
-L'architecture cible mentionne PostgreSQL comme option finale, mais l'etat actuel du backend lit directement le dataset harmonise CSV. Pour cette iteration Docker, la decision est de livrer une stack coherente avec le code existant : CSV et modeles montes en lecture seule, monitoring operationnel, aucun service PostgreSQL inutilise.
-
-L'ajout de PostgreSQL reste un point d'amelioration si l'equipe decide d'industrialiser un import applicatif complet.
+La stack utilise PostgreSQL comme base applicative. Le CSV harmonise reste la source d'import : il est monte en lecture seule, puis importe dans PostgreSQL au demarrage du backend. Les routes `/trajets`, `/trajets/{id}`, `/stats/volumes` et `/health` lisent ensuite les donnees via SQLAlchemy.

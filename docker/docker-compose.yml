@@ -1,18 +1,43 @@
 services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: obrail
+      POSTGRES_USER: obrail
+      POSTGRES_PASSWORD: obrail
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U obrail -d obrail"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   backend:
     build:
       context: ..
       dockerfile: backend/Dockerfile
       network: host
     image: obrail-backend:local
+    command: ["/app/entrypoint.sh"]
     ports:
       - "8000:8000"
     environment:
       OBRAIL_DATASET_PATH: /app/data/eu_trips_v2.csv
       OBRAIL_CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
+      DATABASE_URL: postgresql://obrail:obrail@db:5432/obrail
+      CSV_PATH: /app/data/eu_trips_v2.csv
+      DB_HOST: db
+      DB_USER: obrail
     volumes:
       - ../data:/app/data:ro
       - ../models:/app/models:ro
+    depends_on:
+      db:
+        condition: service_healthy
     healthcheck:
       test:
         [
@@ -76,6 +101,24 @@ services:
       - ../monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
     depends_on:
       - prometheus
+      - loki
+
+  loki:
+    image: grafana/loki:2.9.0
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+
+  promtail:
+    image: grafana/promtail:2.9.0
+    volumes:
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ../monitoring/promtail.yml:/etc/promtail/promtail.yml:ro
+    command: -config.file=/etc/promtail/promtail.yml
+    depends_on:
+      - loki
 
 volumes:
   grafana-data:
+  postgres-data:
