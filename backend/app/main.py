@@ -26,12 +26,13 @@ Monitoring en production (à brancher sur Prometheus / Evidently) :
 from collections import defaultdict
 from functools import lru_cache
 from math import ceil
+import logging
 import os
 from pathlib import Path
 from time import perf_counter
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -42,6 +43,22 @@ import joblib
 import pandas as pd
 import numpy as np
 from datetime import datetime, timezone
+from sqlalchemy.orm import Session
+
+from app.database import SessionLocal, get_db
+from app.models import Trip
+
+import logging_loki
+
+handler = logging_loki.LokiHandler(
+    url="http://loki:3100/loki/api/v1/push",
+    tags={"application": "obrail-api"},
+    version="1",
+)
+
+# Appliquer sur tous les loggers concernés
+for logger_name in ("uvicorn", "uvicorn.access", "uvicorn.error", "fastapi"):
+    logging.getLogger(logger_name).addHandler(handler)
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 TRIPS_CSV_PATH = Path(os.getenv("OBRAIL_DATASET_PATH", BASE_DIR / "data" / "eu_trips_v2.csv"))
@@ -138,7 +155,11 @@ def _format_sample(metric_name: str, labels: dict[str, str], value: float | int)
 
 def _dependency_metrics_lines() -> list[str]:
     """Expose l'état des dépendances critiques sous forme de gauges."""
-    dataset = _dataset_health()
+    db = SessionLocal()
+    try:
+        dataset = _dataset_health(db)
+    finally:
+        db.close()
     dependencies = {
         "dataset": dataset["status"] == "ok",
         "classification_substitution": _substitution_ok,
@@ -300,6 +321,10 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 try:
     _model_substitution = joblib.load("models/classification_substitution_avion.joblib")
     _encoders = joblib.load("models/encoders.joblib")
+    # StandardScaler fitted on the same 7 features (distance_km, duration_minutes,
+    # n_stops, co2_estime, consommation_totale, type_train, country) used to train
+    # the classification model — must be applied before predict() / predict_proba().
+    _scaler = joblib.load("models/scaler.joblib")
     _substitution_ok = True
 except Exception as e:
     _substitution_ok = False
@@ -554,64 +579,80 @@ def _load_trips_df() -> pd.DataFrame:
     return trips
 
 
-def _contains_case_insensitive(series: pd.Series, value: Optional[str]) -> pd.Series:
-    """Filtre texte tolérant à la casse pour les champs gare et ligne."""
-    if not value:
-        return pd.Series(True, index=series.index)
-    return series.fillna("").astype(str).str.contains(value, case=False, na=False, regex=False)
+def _load_trips_from_db(db: Session) -> pd.DataFrame:
+    """Load trips from PostgreSQL.
+    Converts co2_estime (gCO2) to kgCO2_emis (kgCO2) by dividing by 1000.
+    """
+    rows = db.query(Trip).all()
+    data = [{
+        "trip_id": row.trip_id,
+        "route_id": row.route_id,
+        "route_long_name": row.route_long_name,
+        "country": row.country,
+        "origin_stop_name": row.origin_stop_name,
+        "destination_stop_name": row.destination_stop_name,
+        "departure_minutes": row.departure_minutes,
+        "arrival_minutes": row.arrival_minutes,
+        "duration_minutes": row.duration_minutes,
+        "n_stops": row.n_stops,
+        "distance_km": row.distance_km,
+        "type_train": row.type_train,
+        "kgCO2_emis": row.co2_estime / 1000,
+    } for row in rows]
+    return pd.DataFrame(data)
 
 
-def _apply_trips_filters(
-    trips: pd.DataFrame,
+def _build_trips_query(
+    db: Session,
     country: Optional[str],
     type_train: Optional[str],
     origin: Optional[str],
     destination: Optional[str],
     min_distance_km: Optional[float],
     max_distance_km: Optional[float],
-) -> pd.DataFrame:
-    """Applique les filtres métier disponibles sur GET /trajets."""
-    filtered = trips
+):
+    """Construit la requête SQLAlchemy filtrée sur Trip, sans charger les lignes."""
+    query = db.query(Trip)
 
     if country:
-        filtered = filtered[filtered["country"].astype(str).str.upper() == country.upper()]
+        query = query.filter(Trip.country.ilike(country))
     if type_train:
-        filtered = filtered[filtered["type_train"].astype(str).str.lower() == type_train.lower()]
+        query = query.filter(Trip.type_train.ilike(type_train))
     if origin:
-        filtered = filtered[_contains_case_insensitive(filtered["origin_stop_name"], origin)]
+        query = query.filter(Trip.origin_stop_name.ilike(f"%{origin}%"))
     if destination:
-        filtered = filtered[_contains_case_insensitive(filtered["destination_stop_name"], destination)]
+        query = query.filter(Trip.destination_stop_name.ilike(f"%{destination}%"))
     if min_distance_km is not None:
-        filtered = filtered[filtered["distance_km"] >= min_distance_km]
+        query = query.filter(Trip.distance_km >= min_distance_km)
     if max_distance_km is not None:
-        filtered = filtered[filtered["distance_km"] <= max_distance_km]
+        query = query.filter(Trip.distance_km <= max_distance_km)
 
-    return filtered
+    return query
 
 
 def _optional_float(value) -> Optional[float]:
-    """Convertit une valeur pandas en float JSON-compatible."""
-    if pd.isna(value):
+    """Convertit une valeur potentiellement absente en float JSON-compatible."""
+    if value is None:
         return None
     return float(value)
 
 
-def _row_to_trajet(row: pd.Series) -> TrajetOutput:
-    """Convertit une ligne du dataset en contrat API stable."""
+def _trip_to_trajet(row: Trip) -> TrajetOutput:
+    """Convertit une ligne ORM Trip en contrat API stable."""
     return TrajetOutput(
-        id=str(row["trip_id"]),
-        route_id=str(row["route_id"]),
-        route_long_name=None if pd.isna(row["route_long_name"]) else str(row["route_long_name"]),
-        origin_stop_name=str(row["origin_stop_name"]),
-        destination_stop_name=str(row["destination_stop_name"]),
-        country=str(row["country"]),
-        type_train=str(row["type_train"]),
-        distance_km=float(row["distance_km"]),
-        duration_minutes=float(row["duration_minutes"]),
-        n_stops=int(row["n_stops"]),
-        departure_minutes=_optional_float(row["departure_minutes"]),
-        arrival_minutes=_optional_float(row["arrival_minutes"]),
-        kg_co2_emis=_optional_float(row["kgCO2_emis"]),
+        id=str(row.trip_id),
+        route_id=str(row.route_id) if row.route_id is not None else "",
+        route_long_name=row.route_long_name,
+        origin_stop_name=row.origin_stop_name,
+        destination_stop_name=row.destination_stop_name,
+        country=row.country,
+        type_train=row.type_train,
+        distance_km=float(row.distance_km),
+        duration_minutes=float(row.duration_minutes),
+        n_stops=int(row.n_stops),
+        departure_minutes=_optional_float(row.departure_minutes),
+        arrival_minutes=_optional_float(row.arrival_minutes),
+        kg_co2_emis=_optional_float(row.co2_estime / 1000 if row.co2_estime is not None else None),
     )
 
 
@@ -657,31 +698,13 @@ def _model_health(name: str, available: bool, error: Optional[str] = None) -> di
     return {name: payload}
 
 
-def _dataset_health() -> dict:
-    """Retourne l'état du dataset harmonisé sans masquer les erreurs de lecture."""
-    payload = {
-        "path": str(TRIPS_CSV_PATH),
-        "exists": TRIPS_CSV_PATH.exists(),
-    }
-
-    if not TRIPS_CSV_PATH.exists():
-        payload["status"] = "unavailable"
-        payload["error"] = "dataset introuvable"
-        return payload
-
+def _dataset_health(db: Session) -> dict:
+    """Retourne l'état de la base de données sans masquer les erreurs de lecture."""
     try:
-        trips = _load_trips_df()
-        payload.update(
-            {
-                "status": "ok",
-                "rows": int(len(trips)),
-                "columns": list(trips.columns),
-            }
-        )
+        count = db.query(Trip).count()
+        return {"status": "ok", "rows": count, "columns": 13}
     except Exception as e:
-        payload.update({"status": "unavailable", "error": str(e)})
-
-    return payload
+        return {"status": "error", "detail": str(e)}
 
 
 # ---------------------------------------------------------------------------
@@ -717,6 +740,7 @@ def list_trajets(
     destination: Optional[str] = Query(None, description="Recherche partielle sur la gare d'arrivée"),
     min_distance_km: Optional[float] = Query(None, ge=0, description="Distance minimale en kilomètres"),
     max_distance_km: Optional[float] = Query(None, ge=0, description="Distance maximale en kilomètres"),
+    db: Session = Depends(get_db),
 ):
     """Retourne les trajets harmonisés avec pagination et filtres simples."""
     if (
@@ -729,13 +753,8 @@ def list_trajets(
             detail="min_distance_km doit être inférieur ou égal à max_distance_km",
         )
 
-    try:
-        trips = _load_trips_df()
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=503, detail=str(e))
-
-    filtered = _apply_trips_filters(
-        trips=trips,
+    query = _build_trips_query(
+        db=db,
         country=country,
         type_train=type_train,
         origin=origin,
@@ -744,11 +763,15 @@ def list_trajets(
         max_distance_km=max_distance_km,
     )
 
-    total = len(filtered)
+    total = query.count()
     total_pages = ceil(total / page_size) if total else 0
-    start = (page - 1) * page_size
-    end = start + page_size
-    items = [_row_to_trajet(row) for _, row in filtered.iloc[start:end].iterrows()]
+    rows = (
+        query.order_by(Trip.id)
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+    items = [_trip_to_trajet(row) for row in rows]
 
     return TrajetsResponse(
         page=page,
@@ -760,25 +783,20 @@ def list_trajets(
 
 
 @app.get("/trajets/{trajet_id}", response_model=TrajetOutput, tags=["Données"])
-def get_trajet(trajet_id: str):
+def get_trajet(trajet_id: str, db: Session = Depends(get_db)):
     """Retourne le détail d'un trajet à partir de son identifiant stable trip_id."""
-    try:
-        trips = _load_trips_df()
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=503, detail=str(e))
-
-    matches = trips[trips["trip_id"].astype(str) == trajet_id]
-    if matches.empty:
+    row = db.query(Trip).filter(Trip.trip_id == trajet_id).first()
+    if row is None:
         raise HTTPException(status_code=404, detail=f"Trajet '{trajet_id}' introuvable")
 
-    return _row_to_trajet(matches.iloc[0])
+    return _trip_to_trajet(row)
 
 
 @app.get("/stats/volumes", response_model=StatsVolumesResponse, tags=["Données"])
-def stats_volumes():
+def stats_volumes(db: Session = Depends(get_db)):
     """Expose des volumes globaux et agrégés pour le tableau de bord ObRail."""
     try:
-        trips = _load_trips_df()
+        trips = _load_trips_from_db(db)
     except FileNotFoundError as e:
         raise HTTPException(status_code=503, detail=str(e))
 
@@ -795,9 +813,9 @@ def stats_volumes():
 
 
 @app.get("/health", tags=["Général"])
-def health():
+def health(db: Session = Depends(get_db)):
     """Vérifie que l'API, le dataset et les deux modèles sont opérationnels."""
-    dataset = _dataset_health()
+    dataset = _dataset_health(db)
     models = {}
     models.update(
         _model_health(
@@ -869,8 +887,9 @@ def _predict_substitution_logic(liaison: LiaisonSubstitutionInput) -> Substituti
         raise HTTPException(status_code=503, detail=f"Modèle de classification indisponible : {_substitution_error}")
     try:
         X = _build_substitution_df(liaison)
-        prediction = int(_model_substitution.predict(X)[0])
-        proba = float(_model_substitution.predict_proba(X)[0][1])
+        X_scaled = pd.DataFrame(_scaler.transform(X), columns=X.columns)
+        prediction = int(_model_substitution.predict(X_scaled)[0])
+        proba = float(_model_substitution.predict_proba(X_scaled)[0][1])
         label = "Substituable à l'avion" if prediction == 1 else "Non substituable"
         return SubstitutionOutput(
             substitution_avion=prediction,
