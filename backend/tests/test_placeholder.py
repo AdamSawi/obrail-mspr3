@@ -1,12 +1,4 @@
-from fastapi.testclient import TestClient
-
-from backend.app.main import app
-
-
-client = TestClient(app)
-
-
-def test_root_documents_operational_routes():
+def test_root_documents_operational_routes(client):
     response = client.get("/")
 
     assert response.status_code == 200

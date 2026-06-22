@@ -6,25 +6,29 @@ const decimalFormatter = new Intl.NumberFormat("fr-FR", {
   maximumFractionDigits: 1,
 });
 
+function normalizeNumberSpaces(value) {
+  return value.replace(/\u202f/g, " ");
+}
+
 export function formatInteger(value) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) {
     return "-";
   }
-  return integerFormatter.format(Number(value));
+  return normalizeNumberSpaces(integerFormatter.format(Number(value)));
 }
 
 export function formatKm(value) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) {
     return "-";
   }
-  return `${decimalFormatter.format(Number(value))} km`;
+  return `${normalizeNumberSpaces(decimalFormatter.format(Number(value)))} km`;
 }
 
 export function formatCarbon(value) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) {
     return "-";
   }
-  return `${integerFormatter.format(Number(value))} kgCO2`;
+  return `${normalizeNumberSpaces(integerFormatter.format(Number(value)))} kgCO2`;
 }
 
 export function formatDuration(minutes) {
