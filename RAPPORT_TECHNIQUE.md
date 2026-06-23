@@ -6,14 +6,16 @@ Depot GitHub : https://github.com/AdamSawi/obrail-mspr3
 
 Sujet : mise en production d'une solution applicative autour du projet ObRail Europe.
 
-ObRail Europe est un observatoire specialise dans l'analyse des flux ferroviaires europeens et la mobilite durable. La MSPR 3 ne consiste pas a reconstruire tout le socle de donnees deja produit avant, mais a industrialiser une application complete autour de ce socle.
+ObRail Europe est un observatoire specialise dans l'analyse des flux ferroviaires europeens et la mobilite durable. Le projet consiste a proposer une application web industrialisee, capable d'exposer, de consulter et de superviser des donnees ferroviaires dans un environnement reproductible.
 
-Le projet reprend :
+Le rendu s'appuie sur :
 
-- le dataset ferroviaire harmonise issu de la MSPR precedente ;
-- les modeles IA deja entraines ;
-- une API prototype a renforcer ;
-- une application web a rendre exploitable, testable, conteneurisee et supervisee.
+- un backend FastAPI ;
+- un frontend React ;
+- une base PostgreSQL ;
+- des modeles IA versionnes ;
+- une orchestration Docker Compose ;
+- une supervision applicative.
 
 ## 2. Objectif du projet
 
@@ -39,10 +41,10 @@ docker compose -f docker/docker-compose.yml up --build
 ## 3. Architecture generale
 
 ```text
-Dataset harmonise MSPR precedente
+Dataset ferroviaire harmonise
         |
         v
-Import reproductible seed.py
+Import applicatif
         |
         v
 PostgreSQL
@@ -62,7 +64,6 @@ Services lances par Docker Compose :
 
 | Service | Role | URL locale |
 | --- | --- | --- |
-| PostgreSQL | Base applicative persistante | `localhost:5432` |
 | Adminer | Visualisation de la base PostgreSQL | `http://localhost:8081` |
 | Backend FastAPI | API REST et endpoints IA | `http://localhost:8000` |
 | Swagger | Documentation interactive API | `http://localhost:8000/docs` |
@@ -85,20 +86,9 @@ scripts/        Scripts de lancement et de preuve PostgreSQL
 project/        Elements de pilotage projet conserves hors rapport
 ```
 
-Les anciens fichiers de documentation disperses ont ete regroupes dans ce rapport afin de garder un rendu plus lisible.
+## 5. Donnees et PostgreSQL
 
-## 5. Donnees, ETL et PostgreSQL
-
-Le sujet indique que le projet dispose deja d'un socle issu de la MSPR precedente : un entrepot de donnees harmonise et une API REST prototype. La MSPR 3 demande surtout d'industrialiser l'application complete.
-
-Position retenue :
-
-- le processus ETL complet reste rattache au socle precedent ;
-- le dataset harmonise est conserve dans `data/eu_trips_v2.csv` ;
-- l'application MSPR 3 importe ce dataset de maniere reproductible dans PostgreSQL ;
-- les routes applicatives lisent ensuite les donnees depuis la base via SQLAlchemy.
-
-Cette approche respecte l'objectif du sujet : avoir une application industrialisee avec une base de donnees persistante, sans refaire inutilement tout le pipeline ETL historique.
+Les donnees ferroviaires sont conservees dans `data/eu_trips_v2.csv`. Au demarrage de la stack Docker, le backend charge ces donnees dans PostgreSQL afin que l'application repose sur une base persistante.
 
 Fichiers principaux :
 
@@ -109,7 +99,7 @@ Fichiers principaux :
 - `scripts/entrypoint.sh` : attend PostgreSQL, lance le seed puis demarre l'API ;
 - `scripts/preuve_postgresql.sh` : affiche la preuve de la base, de la table et des donnees.
 
-La base peut aussi etre visualisee dans Adminer sur `http://localhost:8081` avec :
+La base peut etre visualisee dans Adminer sur `http://localhost:8081` avec :
 
 ```text
 Systeme : PostgreSQL
@@ -131,7 +121,7 @@ nombre_de_trajets
 142411
 ```
 
-La base PostgreSQL est donc presente, lancee dans Docker, et alimentee avec les trajets ferroviaires.
+Cette verification permet de montrer que la base PostgreSQL contient bien les trajets utilises par l'application.
 
 ## 6. Backend
 
@@ -317,17 +307,13 @@ admin / admin
 
 Ces identifiants sont uniquement prevus pour la demonstration locale.
 
-## 13. Limites connues
+## 13. Points de vigilance
 
-Le projet est coherent pour une MSPR de mise en production, mais certaines limites restent a connaitre :
+Certains points restent a renforcer dans le cadre d'une mise en production reelle :
 
-- l'ETL complet historique n'est pas reimplemente dans cette MSPR ;
-- l'import PostgreSQL part du dataset harmonise fourni ;
 - les identifiants Grafana locaux doivent etre changes hors demonstration ;
 - un audit RGAA complet n'est pas encore fourni ;
 - une production reelle demanderait HTTPS, authentification et durcissement supplementaire.
-
-Ces limites sont assumables car le sujet demande surtout l'industrialisation du socle existant, pas la reconstruction complete de la chaine ETL.
 
 ## 14. Synthese
 
@@ -336,10 +322,10 @@ Le depot livre une solution MSPR 3 structuree autour de :
 - une API FastAPI ;
 - un frontend React ;
 - une base PostgreSQL persistante ;
-- un import reproductible des donnees ;
+- une alimentation reproductible de la base ;
 - des modeles IA versionnes ;
 - une orchestration Docker Compose ;
 - une pipeline CI ;
 - une supervision Prometheus, Grafana, Loki et Promtail.
 
-Le rendu peut etre presente comme une mise en production pedagogique du socle ObRail : l'application est executable, testable, supervisee, documentee dans ce rapport unique et reliee a son depot GitHub.
+Le rendu presente une application executable, testable, supervisee et documentee. L'ensemble des fichiers necessaires au lancement et a la verification du projet est disponible dans le depot GitHub.
