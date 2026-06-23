@@ -201,6 +201,7 @@ Jobs principaux :
 | Backend | installe les dependances Python, compile l'API, seed PostgreSQL et lance Pytest |
 | Frontend | installe les dependances Node, lance les tests et build Vite |
 | Docker | valide le fichier Compose et construit les images |
+| E2E | lance la stack Docker et verifie le frontend avec Playwright |
 
 Commandes locales utiles :
 
@@ -220,6 +221,8 @@ npm run build
 docker compose -f docker/docker-compose.yml config --quiet
 docker compose -f docker/docker-compose.yml build
 ```
+
+Les tests E2E Playwright verifient que le frontend charge les donnees, que le filtre pays fonctionne, que la page ne retourne pas d'erreur serveur et que l'etat de l'API est visible dans l'interface.
 
 ## 10. Monitoring et logs
 

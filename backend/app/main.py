@@ -45,7 +45,7 @@ import numpy as np
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
-from app.database import SessionLocal, get_db
+from app.database import get_db
 from app.models import Trip
 
 import logging_loki
@@ -153,13 +153,9 @@ def _format_sample(metric_name: str, labels: dict[str, str], value: float | int)
     return f"{metric_name}{{{_format_labels(labels)}}} {value}"
 
 
-def _dependency_metrics_lines() -> list[str]:
+def _dependency_metrics_lines(db: Session) -> list[str]:
     """Expose l'état des dépendances critiques sous forme de gauges."""
-    db = SessionLocal()
-    try:
-        dataset = _dataset_health(db)
-    finally:
-        db.close()
+    dataset = _dataset_health(db)
     dependencies = {
         "dataset": dataset["status"] == "ok",
         "classification_substitution": _substitution_ok,
@@ -849,13 +845,13 @@ def health(db: Session = Depends(get_db)):
 
 
 @app.get("/metrics", tags=["Monitoring"], include_in_schema=False)
-def metrics():
+def metrics(db: Session = Depends(get_db)):
     """Expose les métriques Prometheus collectées par le backend."""
     lines = [
         "# HELP obrail_api_info Static API information.",
         "# TYPE obrail_api_info gauge",
         'obrail_api_info{app="obrail-backend",version="2.0.0"} 1',
-        *_dependency_metrics_lines(),
+        *_dependency_metrics_lines(db),
         *_http_metrics_lines(),
     ]
     return PlainTextResponse("\n".join(lines) + "\n", media_type="text/plain; version=0.0.4")
